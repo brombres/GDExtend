@@ -4,7 +4,7 @@ A Rogo buildscript to facilitate creating and building GDExtensions for Godot 4.
 About     | &nbsp;
 ----------|-----------------------
 Version   | 1.0
-Date      | June 19, 2023
+Date      | June 26, 2023
 Platforms | Windows, macOS, Linux
 
 # Installation
