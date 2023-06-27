@@ -31,7 +31,8 @@ routine rogo_default
 
       println
 
-      print_wrap "[Create Class] Specify the first native class in the extension, e.g. 'GDTest' or 'GDTest extends Node' etc."
+      header "Create native class"
+      print_wrap "Specify the first native class in the extension, e.g. 'GDTest' or 'GDTest extends Node' etc."
       local type_name = Console.input( "> " )
       if (type_name) type_name .= trimmed
       if (not String.exists(type_name))
@@ -54,8 +55,9 @@ routine rogo_default
       rogo_build( default_os )
     endIf
   else
+    header "Create GDExtension framework"
     print_wrap...
-      "[Create Extension Framework] Enter extension name, e.g. 'gdtest'."
+      "Enter extension name, e.g. 'gdtest'."
       local name = Console.input( "> " )
       if (name) name .= trimmed
       if (not String.exists(name))
@@ -92,7 +94,7 @@ routine rogo_build( target:String )
   #
   # Builds the GDExtension for the specified platform(s) and architecture(s).
   #
-  # platform:     [all|default|android|ios|js|linux|macos|windows]<br>
+  # platform:     [all|default|android|ios|linux|macos|web|windows]<br>
   # architecture: [all|default|universal|x86_32|x86_64|arm32|arm64|rv64|ppc32|ppc64|wasm32]<br>
   # mode:         [all|debug|release]
   #
@@ -111,6 +113,9 @@ routine rogo_build( target:String )
 
   deps
 
+  local listing = File( "Source" ).listing( "*.gdextension" )
+  local extension_name = which{ listing.count:listing.first || "" }
+
   local android_ndk_root = System.env//ANDROID_NDK_ROOT
   if (not android_ndk_root)
     local sdk = System.env//ANDROID_HOME
@@ -125,10 +130,10 @@ routine rogo_build( target:String )
   endIf
 
   forEach (platform in config.platforms)
-    if (platform == "js")
+    if (platform == "web")
       patch_js_build
       if (not System.find_executable("em++"))
-        throw Error( "[JavaScript] Cannot locate 'em++' compiler. Ensure 'emscripten' is installed." )
+        throw Error( "[Web] Cannot locate 'em++' compiler. Ensure 'emscripten' is installed." )
       endIf
     elseIf (platform == "android")
       if (not android_ndk_root)
@@ -136,21 +141,20 @@ routine rogo_build( target:String )
       endIf
     endIf
 
-    block platform = which{ platform=="js":"javascript" || platform }
+    local scons_platform = which{ platform=="web":"javascript" || platform }
 
-      local architectures = config.architectures
-      if (architectures.first == "all") architectures = all_architectures( platform )
+    local architectures = config.architectures
+    if (architectures.first == "all") architectures = all_architectures( platform )
 
-      forEach (arch in architectures)
-        forEach (mode in config.modes)
-          local cmd = "scons platform=$ target=template_$"(platform,mode)
-          if (arch != "default") cmd .= appending( "arch=$"(arch) )
-          if (platform == "android") cmd .= appending( "ANDROID_NDK_ROOT=$"(android_ndk_root) )
-          execute cmd
-        endForEach
+    forEach (arch in architectures)
+      forEach (mode in config.modes)
+        header "Building GDExtension $ [$ $ $]"(extension_name,platform,arch,mode)
+        local cmd = "scons platform=$ target=template_$"(scons_platform,mode)
+        if (arch != "default") cmd .= appending( "arch=$"(arch) )
+        if (platform == "android") cmd .= appending( "ANDROID_NDK_ROOT=$"(android_ndk_root) )
+        execute cmd
       endForEach
-
-    endBlock
+    endForEach
 
   endForEach
 
@@ -165,7 +169,7 @@ routine patch_js_build
   local content = String( file )
   if (content.contains(''#return "EM_CONFIG"'')) return
 
-  println "[PATCH] Patching $ to fix Javascript build"(file)
+  header "Patching $ to fix Javascript build"(file)
   local lines = content.split( '\n' )
   local tab = ""
   local rewriter = lines.rewriter
@@ -189,12 +193,12 @@ endRoutine
 
 routine supported_platforms->String[]
   if (System.is_macos)
-    return ["android","ios","js","macos"]
+    return ["android","ios","macos","web"]
   elseIf (System.is_windows)
-    return ["android","js","windows"]
+    return ["android","web","windows"]
   else
     # Assume Linux
-    return ["android","js","linux"]
+    return ["android","linux","web"]
   endIf
 endRoutine
 
@@ -204,12 +208,12 @@ routine supported_architectures( platform:String )->String[]
       return ["x86_64","arm64"]
     case "ios"
       return ["universal","x86_64","arm64"]
-    case "js"
-      return ["wasm32"]
     case "linux"
       return ["x86_64","arm64","rv64"]
     case "macos"
       return ["universal","x86_64","arm64"]
+    case "web"
+      return ["wasm32"]
     case "windows"
       return ["x86_32","x86_64"]
     others
@@ -224,12 +228,12 @@ routine all_architectures( platform:String )->String[]
       return ["x86_64","arm64"]
     case "ios"
       return ["universal"]
-    case "js"
-      return ["wasm32"]
     case "linux"
       return ["x86_64","arm64","rv64"]
     case "macos"
       return ["universal"]
+    case "web"
+      return ["wasm32"]
     case "windows"
       return ["x86_32","x86_64"]
     others
@@ -254,7 +258,7 @@ routine rogo_sync( project_filepath:String )
   filepaths.add( forEach in System.command_line_arguments from 1 )
 
   local outputs = String[]
-  local file =  File("SynchedProjects.txt")
+  local file =  File("LinkedProjects.txt")
   if (file.exists) outputs = String( file ).trimmed.split( '\n' )
   forEach (filepath in filepaths)
     if (not outputs.contains(filepath))
@@ -278,7 +282,7 @@ routine rogo_unsync( project_filepath:String )
   filepaths.add( forEach in System.command_line_arguments from 1 )
 
   local outputs = String[]
-  local file =  File("SynchedProjects.txt")
+  local file =  File("LinkedProjects.txt")
   if (file.exists) outputs = String( file ).trimmed.split( '\n' )
   forEach (filepath in filepaths)
     outputs.remove( filepath )
@@ -305,12 +309,18 @@ routine rogo_create( class_name:String, extends:String, base_class_name:String )
   CreateClass( class_name, base_class_name )
 endRoutine
 
-routine sync_products
+routine sync_products->Logical
   # Copy build products to synched output projects.
-  Files("Source","*.gdextension").sync_to( File("Build"), &verbose, &keep_unused )
+  local files = Files( "Source", "*.gdextension" )
+  local header_shown = false
+  if (files.sync_to(File("Build"), &keep_unused, &dry_run))
+    header "Synchronizing build products to linked projects"
+    files.sync_to( File("Build"), &verbose, &keep_unused )
+    header_shown = true
+  endIf
 
   local outputs = String[]
-  local file =  File("SynchedProjects.txt")
+  local file =  File("LinkedProjects.txt")
   if (file.exists) outputs = String( file ).trimmed.split( '\n' )
   forEach (filepath in outputs)
     if (File(filepath).exists)
@@ -323,9 +333,18 @@ routine sync_products
       products.add( "*.framework/**" )
       products.add( "*.so" )
       products.add( "*.wasm" )
-      products.sync_to( bin, &verbose, &keep_unused )
+      if (products.sync_to(bin,&dry_run,&keep_unused))
+        if (not header_shown)
+          header "Synchronizing build products to linked projects"
+          header_shown = true
+        endIf
+        products.sync_to( bin, &verbose, &keep_unused )
+      endIf
     endIf
   endForEach
+
+  if (not header_shown) header "Linked projects are up to date"
+  return header_shown
 endRoutine
 
 routine rogo_run
@@ -358,10 +377,10 @@ endRoutine
 
 routine deps( &check_for_update )
   if (not File("godot-cpp").exists)
-    println "Cloning the godot-cpp repo"
+    header "Cloning godot-cpp repo"
     execute "git clone -b $ https://github.com/godotengine/godot-cpp.git"(Build.GODOT_CPP_BRANCH)
   elseIf (check_for_update)
-    println "Updating godot-cpp"
+    header "Updating godot-cpp repo"
     execute "(cd godot-cpp && git pull)"
   endIf
 endRoutine
@@ -384,7 +403,7 @@ endRoutine
 
 class BuildConfig
   GLOBAL PROPERTIES
-    PLATFORMS        = ["all","default","android","ios","javascript","js","linux","macos","windows"]
+    PLATFORMS        = ["all","default","android","ios","javascript","js","linux","macos","web","windows"]
     ARCHITECTURES    = ["all","default","universal","x86_32","x86_64","arm32","arm64","rv64","ppc32","ppc64","wasm32"]
     MODES            = ["debug","release"]
 
@@ -403,7 +422,7 @@ class BuildConfig
       local platform = features.remove_first( BuildConfig.PLATFORMS.contains($) )
       local architecture = features.remove_first( BuildConfig.ARCHITECTURES.contains($) )
 
-      if (platform == "javascript") platform = "js"
+      if (platform == "javascript" or platform == "web") platform = "web"
       if (not mode) mode = features.remove_first( $ == "all" )
 
       if (not features.is_empty)
@@ -618,12 +637,12 @@ class CreateExtension
          |windows.x86_64.release    = "res://bin/lib<LIBNAME>.windows.template_release.x86_64.dll"
       save( extension, File("Source/$.gdextension"(libname)) )
 
-      println "Extension '$' created."(libname)
+      header "Extension '$' created."(libname)
       println
 
       rogo_default
 
-      println "Finished! Run 'rogo help' to list available build commands."
+      header "Finished! Run 'rogo help' to list available build commands."
 
     method save( source:String, file:File )
       if (file.exists) return
@@ -645,7 +664,7 @@ class CreateClass
 
       name_uc = name.to_uppercase
 
-      println "Creating native class $ extends $"(name,base_class_name)
+      header "Creating native class $ extends $"(name,base_class_name)
 
       # Find header for base class
       if (base_class_name == "RefCounted")
@@ -667,8 +686,8 @@ class CreateClass
             endIf
           endForEach
 
-          print_wrap "[ALERT] Cannot determine appropriate header for base class '$'. "(base_class_name) +
-                     "Manually add appropriate #include in '$.h'."(name)
+          header "Cannot determine appropriate header for base class '$'. "(base_class_name) +
+                 "Manually add appropriate #include in '$.h'."(name)
           base_class_header = ""
         endContingent
       endIf
@@ -784,8 +803,19 @@ class CreateClass
 
 endClass
 
+routine header( content:String )
+  local n = Console.width.or_smaller(100)
+  content .= word_wrapped( n-2 )
+
+  println "┌$┐" ("─"*(n-2))
+  forEach (line in content.split('\n'))
+    println "│$$│"(line," "*(n-(line.count+2)))
+  endForEach
+  println "└$┘" ("─"*(n-2))
+endRoutine
+
 routine print_wrap( text:String )
-  println text.word_wrapped( 80.or_smaller(Console.width) )
+  println text.word_wrapped( 100.or_smaller(Console.width) )
 endRoutine
 
 #-------------------------------------------------------------------------------
