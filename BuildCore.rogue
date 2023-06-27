@@ -23,11 +23,11 @@ routine rogo_default
   # Builds the extension for the current platform's default architecture.
   if (File("Source").exists)
     if (File("Source").listing("*.cpp").count > 1)
-      rogo_build( default_os )
+      build( default_os )
     else
       deps
 
-      rogo_build( default_os )
+      build( default_os )
 
       println
 
@@ -52,7 +52,7 @@ routine rogo_default
         rogo_create( parts[0], parts[1], parts[2] )
       endIf
 
-      rogo_build( default_os )
+      build( default_os )
     endIf
   else
     header "Create GDExtension framework"
@@ -89,7 +89,7 @@ routine rogo_init( extension_name:String )
   CreateExtension( extension_name )
 endRoutine
 
-routine rogo_build( target:String )
+routine rogo_build
   # SYNTAX: rogo build [platform.architecture.mode]
   #
   # Builds the GDExtension for the specified platform(s) and architecture(s).
@@ -105,6 +105,12 @@ routine rogo_build( target:String )
   # Parts can be specified in any order if unambiguous, e.g. 'debug.x86_64.windows'.
   #
   # 'rogo build all' will build all supported platforms and architectures in both release and debug mode.
+
+  build( System.command_line_arguments.cloned.[remove_first].join('.') )
+  # Allow both e.g. 'ios.arm64.debug' and 'ios arm64 debug'.
+endRoutine
+
+routine build( target:String )
   local config = BuildConfig( target )
 
   if (not File("Source").exists)
