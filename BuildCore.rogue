@@ -89,8 +89,37 @@ routine rogo_init( extension_name:String )
   CreateExtension( extension_name )
 endRoutine
 
+# 'rogo help build' custom per-OS description
+block builder = String()
+  local platforms = supported_platforms
+  local architectures = Set<<String>>()
+  architectures.[ add("all"), add("default") ]
+  architectures.add( forEach in supported_architectures(forEach in platforms) )
+  platforms = ["all","default"].[ add(platforms) ]
+
+  builder = ...
+    @|Builds the GDExtension for the specified platform(s) and architecture(s).
+     |
+     |platform:     [$PLATFORMS]
+     |architecture: [$ARCHITECTURES]
+     |mode:         [all|debug|release]
+     |
+     |'platform' and/or 'architecture' parts can be omitted, in which case 'default' is assumed.
+     |
+     |'mode' part can be omitted, in which case 'debug' is assumed.
+     |
+     |Parts can be specified in any order if unambiguous, e.g. 'debug.x86_64.windows'.
+     |
+     |'rogo build all' will build all supported platforms and architectures in both release and debug mode.
+  builder .= replacing( "$PLATFORMS", platforms.join('|') )
+  builder .= replacing( "$ARCHITECTURES", architectures.to_list.join("|") )
+
+  description( "build", builder )
+endBlock
+
 routine rogo_build
   # SYNTAX: rogo build [platform.architecture.mode]
+
   #
   # Builds the GDExtension for the specified platform(s) and architecture(s).
   #
