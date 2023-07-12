@@ -33,7 +33,7 @@ routine rogo_default
       println
 
       header "Create native class"
-      print_wrap "Specify the first native class in the extension, e.g. 'GDTest' or 'GDTest extends Node' etc."
+      print_wrap "Specify the first native class in the extension, e.g. 'GDTest' or 'GDTest extends Node'/'GDTest:Node' etc."
       local type_name = Console.input( "> " )
       if (type_name) type_name .= trimmed
       if (not String.exists(type_name))
@@ -42,8 +42,10 @@ routine rogo_default
         return
       endIf
 
+      type_name .= replacing( ":", " extends " )
       local parts = type_name.split(' ')
       parts.modify( $.trimmed )
+      parts.discard( $ == "" )
 
       if (parts.count == 1)
         rogo_create( type_name, null, null )
@@ -138,6 +140,83 @@ routine rogo_build
 
   build( System.command_line_arguments.cloned.[remove_first].join('.') )
   # Allow both e.g. 'ios.arm64.debug' and 'ios arm64 debug'.
+endRoutine
+
+routine rogo_find( class_name:String )
+  # Prints the filepath for the file that defines the given Godot class.
+  #
+  # EXAMPLES<br>
+  #   > rogo find Camera3D<br>
+  #   godot-cpp/gen/include/godot_cpp/classes/camera3d.hpp
+  #
+  #   > rogo find Variant<br>
+  #   godot-cpp/include/godot_cpp/variant/variant.hpp
+  println find_header( class_name, &expanded_search )
+endRoutine
+
+routine rogo_include( class_name:String )
+  # Prints the necessary #include path for the given Godot class.
+  # If the class can't be found in the standard #include path,
+  # all godot-cpp headers will be searched and the filename of
+  # the header that defines the class will be printed (equivalent
+  # to 'rogo find <ClassName>').
+  #
+  # EXAMPLES<br>
+  #   > rogo include Camera3D<br>
+  #   #include <godot_cpp/classes/camera3d.hpp>
+  #
+  #   > rogo include Variant<br>
+  #   godot-cpp/include/godot_cpp/variant/variant.hpp
+  println find_header( class_name, &as_header, &expanded_search )
+endRoutine
+
+routine find_header( class_name:String, &as_header, &expanded_search )->String
+  if (class_name == "RefCounted")
+    if (as_header) return "#include <godot_cpp/classes/ref.hpp>"
+    else           return "godot-cpp/include/godot_cpp/classes/ref.hpp"
+  else
+    local base_lc = class_name.to_lowercase
+    forEach (filepath in Files("godot-cpp/gen/include","godot_cpp/classes/**/*.hpp"))
+      if (base_lc == File(filepath).filename.to_lowercase.replacing("_","").before_last(".hpp"))
+        if (as_header) return "#include <$>"(filepath.after_first("godot-cpp/gen/include/"))
+        else           return filepath
+      endIf
+    endForEach
+
+    forEach (filepath in Files("Source","*.h"))
+      if (base_lc == File(filepath).filename.to_lowercase.replacing("_","").before_last(".h"))
+        if (as_header) return ''#include "$"''(filepath.after_first("Source/"))
+        else           return filepath
+      endIf
+    endForEach
+
+    if (expanded_search)
+      forEach (filepath in Files("godot-cpp/**/*.hpp"))
+        if (base_lc == File(filepath).filename.to_lowercase.replacing("_","").before_last(".hpp"))
+          return filepath
+        endIf
+      endForEach
+
+      local search_for = "class $"(class_name)
+      local exclude = search_for + ";"
+      forEach (filepath in Files("godot-cpp/**/*.hpp"))
+        forEach (line in LineReader(File(filepath)))
+          if (line.contains(search_for) and not line.contains(exclude))
+            return filepath
+          endIf
+        endForEach
+      endForEach
+    endIf
+
+    if (as_header)
+      header "Cannot find the header for class '$'. "(class_name) +
+             "Manually add the appropriate #include."
+    else
+      header "Cannot find the file that defines class '$'. "(class_name)
+    endIf
+
+    return ""
+  endIf
 endRoutine
 
 routine build( target:String )
@@ -332,12 +411,19 @@ routine rogo_create( class_name:String, extends:String, base_class_name:String )
   # If no 'extends <BaseClassName>' is specified, the new class will extend 'RefCounted'.
   # Extending 'Node' (or 'Node2D' etc.) will create a node class that can be added to the
   # scene tree. Can be repeated to create multiple native classes as part of this GDExtension.
+  if (class_name.contains(':'))
+    base_class_name = class_name.after_first( ':' )
+    extends = ":"
+    class_name .= before_first(':')
+  endIf
+
   if (String.exists(extends))
     contingent
       necessary (extends == "extends" or extends == ":")
       necessary (String.exists(base_class_name))
     unsatisfied
-      throw Error( "[ERROR] Syntax error - expected 'rogo create $' or 'rogo create $ extends <BaseClassName>'."(class_name,class_name) )
+      throw Error( "[ERROR] Syntax error - expected 'rogo create $', 'rogo create $ extends <BaseClassName>', "...
+                   "or 'rogo create $:<BaseClassName>'."(class_name,class_name,class_name) )
     endContingent
   else
     base_class_name = "RefCounted"
@@ -423,6 +509,7 @@ routine deps( &check_for_update )
   elseIf (check_for_update)
     header "Updating godot-cpp repo"
     execute "(cd godot-cpp && git pull)"
+    execute "(cd godot-cpp && scons)"
   endIf
 
   local patcher = GitIgnorePatcher( ".gitignore" )
@@ -730,34 +817,13 @@ class CreateClass
 
       header "Creating native class $ extends $"(name,base_class_name)
 
-      # Find header for base class
-      if (base_class_name == "RefCounted")
-        base_class_header = "#include <godot_cpp/classes/ref.hpp>"
-      else
-        contingent
-          local base_lc = base_class_name.to_lowercase
-          forEach (filepath in Files("godot-cpp/gen/include","godot_cpp/classes/**/*.hpp"))
-            if (base_lc == File(filepath).filename.to_lowercase.replacing("_","").before_last(".hpp"))
-              base_class_header = "#include <$>"(filepath.after_first("godot-cpp/gen/include/"))
-              sufficient (true)
-            endIf
-          endForEach
-
-          forEach (filepath in Files("Source","*.h"))
-            if (base_lc == File(filepath).filename.to_lowercase.replacing("_","").before_last(".h"))
-              base_class_header = ''#include "$"''(filepath.after_first("Source/"))
-              sufficient (true)
-            endIf
-          endForEach
-
-          header "Cannot determine appropriate header for base class '$'. "(base_class_name) +
-                 "Manually add appropriate #include in '$.h'."(name)
-          base_class_header = ""
-        endContingent
-      endIf
+      base_class_header = find_header( base_class_name, &as_header)
 
       local h =
-        @|#ifndef <NAME_UC>_H
+        @|// REFERENCE
+         |// https://docs.godotengine.org/en/stable/contributing/development/core_and_modules/object_class.html
+         |
+         |#ifndef <NAME_UC>_H
          |#define <NAME_UC>_H
          |
          |#ifdef WIN32
@@ -765,6 +831,8 @@ class CreateClass
          |#endif
          |
          |<BASE_CLASS_HEADER>
+         |#include <godot_cpp/classes/camera3d.hpp>
+         |#include <godot_cpp/classes/material.hpp>
          |
          |using namespace godot;
          |
@@ -777,18 +845,30 @@ class CreateClass
          |
          |  public:
          |    // PROPERTIES
-         |    Vector2 example_property = Vector2(0,0);
+         |    float         scale = 1.0f;
+         |    Vector3       position;
+         |    ObjectID      camera;
+         |    Ref<Material> material;
          |
          |    // CONSTRUCTOR METHODS
          |    <NAME>();
          |    ~<NAME>();
          |
          |    // PROPERTY ACCESS METHODS
-         |    Vector2 get_example_property();
-         |    void    set_example_property( Vector2 value );
+         |    Ref<Material> get_material() { return material; }
+         |    void          set_material( const Ref<Material> &p_material ) { material = p_material; }
+         |
+         |    Camera3D* get_camera();
+         |    void      set_camera( Camera3D* p_camera );
+         |
+         |    Vector3 get_position() { return position; }
+         |    void    set_position( Vector3 p_position ) { position = p_position; }
+         |
+         |    float get_scale() { return scale; }
+         |    void  set_scale( float p_scale ) { scale = p_scale; }
          |
          |    // GENERAL METHODS
-         |    int example_method( int parameter );
+         |    int add_one( int parameter );
          |};
          |
          |#endif // <NAME_UC>_H
@@ -808,27 +888,37 @@ class CreateClass
          |{
          |}
          |
-         |Vector2 <NAME>::get_example_property()
+         |Camera3D* Plasmacore::get_camera()
          |{
-         |  return example_property;
+         |  // Result can be 'nullptr'.
+         |  return Object::cast_to<Camera3D>( ObjectDB::get_instance(camera) );
          |}
          |
-         |void <NAME>::set_example_property( Vector2 value )
+         |void Plasmacore::set_camera( Camera3D* p_camera )
          |{
-         |  example_property = value;
+         |  camera = p_camera ? p_camera->get_instance_id() : ObjectID();
          |}
          |
-         |int <NAME>::example_method( int parameter )
+         |int <NAME>::add_one( int parameter )
          |{
          |  return parameter + 1;
          |}
          |
          |void <NAME>::_bind_methods()
          |{
-         |  ClassDB::bind_method( D_METHOD("get_example_property" ),         &<NAME>::get_example_property );
-         |  ClassDB::bind_method( D_METHOD("set_example_property", "value"), &<NAME>::set_example_property );
-         |  ClassDB::bind_method( D_METHOD("example_method", "parameter"),   &<NAME>::example_method, DEFVAL(1) );
-         |  ADD_PROPERTY( PropertyInfo(Variant::VECTOR2,"example_property"), "set_example_property", "get_example_property" );
+         |  ClassDB::bind_method( D_METHOD("get_material" ),         &<NAME>::get_material );
+         |  ClassDB::bind_method( D_METHOD("get_camera" ),           &<NAME>::get_camera );
+         |  ClassDB::bind_method( D_METHOD("get_position" ),         &<NAME>::get_position );
+         |  ClassDB::bind_method( D_METHOD("get_scale" ),            &<NAME>::get_scale );
+         |  ClassDB::bind_method( D_METHOD("set_camera", "value"),   &<NAME>::set_camera );
+         |  ClassDB::bind_method( D_METHOD("set_material", "value"), &<NAME>::set_material );
+         |  ClassDB::bind_method( D_METHOD("set_position", "value"), &<NAME>::set_position );
+         |  ClassDB::bind_method( D_METHOD("set_scale", "value"),    &<NAME>::set_scale );
+         |  ClassDB::bind_method( D_METHOD("add_one", "parameter"),  &<NAME>::add_one, DEFVAL(1) );
+         |  ADD_PROPERTY( PropertyInfo(Variant::OBJECT,  "material", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_material", "get_material");
+         |  ADD_PROPERTY( PropertyInfo(Variant::OBJECT,  "camera",   PROPERTY_HINT_NODE_TYPE, "Camera3D"), "set_camera", "get_camera");
+         |  ADD_PROPERTY( PropertyInfo(Variant::VECTOR3, "position"), "set_position", "get_position");
+         |  ADD_PROPERTY( PropertyInfo(Variant::FLOAT,   "scale",    PROPERTY_HINT_RANGE, "0.0,1.0,0.05,or_less,or_greater"), "set_scale", "get_scale");
          |}
       save( cpp, File("Source/$.cpp"(name)) )
 
@@ -863,6 +953,7 @@ class CreateClass
       source .= replacing( "<NAME_UC>", name_uc )
       source .= replacing( "<BASE_CLASS_HEADER>", base_class_header )
       source .= replacing( "<BASE_CLASS_NAME>", base_class_name )
+			source .= replacing( "  ", '\t' )
       file.save( source )
 
 endClass
