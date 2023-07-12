@@ -16,7 +16,7 @@ augment Build
     GODOT_EXE_WINDOWS = ""
     GODOT_EXE_LINUX   = ""
 
-    GODOT_CPP_BRANCH = "4.0"
+    GODOT_CPP_BRANCH = "4.1"
 endAugment
 
 routine rogo_default
@@ -563,11 +563,11 @@ class CreateExtension
          |extern "C"
          |{
          |  GDExtensionBool GDE_EXPORT <LIBNAME>_library_init(
-         |    const GDExtensionInterface *p_interface,
+         |    GDExtensionInterfaceGetProcAddress p_get_proc_address,
          |    const GDExtensionClassLibraryPtr p_library,
          |    GDExtensionInitialization *r_initialization )
          |  {
-         |    GDExtensionBinding::InitObject init_obj(p_interface, p_library, r_initialization);
+         |    GDExtensionBinding::InitObject init_obj(p_get_proc_address, p_library, r_initialization);
          |
          |    init_obj.register_initializer(initialize_<LIBNAME>_types);
          |    init_obj.register_terminator(uninitialize_<LIBNAME>_types);
@@ -645,6 +645,7 @@ class CreateExtension
         @|[configuration]
          |
          |entry_symbol = "<LIBNAME>_library_init"
+         |compatibility_minimum = 4.1
          |
          |[libraries]
          |
