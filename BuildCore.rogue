@@ -424,6 +424,28 @@ routine deps( &check_for_update )
     header "Updating godot-cpp repo"
     execute "(cd godot-cpp && git pull)"
   endIf
+
+  local patcher = GitIgnorePatcher( ".gitignore" )
+
+  patcher.add( "# GDExtension", "/godot-cpp" )
+
+  patcher.add( "# Rogo", ".rogo" )
+  patcher.add( "# Rogo", "/Build" )
+  patcher.add( "# Rogo", "BuildLocal.rogue" )
+  patcher.add( "# Rogo", "/LinkedProjects.txt" )
+  patcher.add( "# Rogo", "Local.rogo" )
+
+  patcher.add( "# SCons", ".sconsign.dblite" )
+
+  patcher.add( "# Vim", "*.swo" )
+  patcher.add( "# Vim", "*.swp" )
+
+  if (patcher.is_modified)
+    if (patcher.file.exists) header "Updating .gitignore"
+    else                     header "Creating .gitignore"
+    patcher.print_new_entries
+    patcher.save
+  endIf
 endRoutine
 
 routine execute( commands:String, error_message=null:String, &suppress_error )->Logical
