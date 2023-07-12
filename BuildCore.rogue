@@ -5,14 +5,15 @@
 $requireRogue "2.18"
 
 uses Math/Best
+uses Utility/GitIgnorePatcher
 uses Utility/VersionNumber
 
 augment Build
   # You can create a Local.rogo file with overrides for these values, e.g.:
-  # BUILD_MODE = release
+  #   AUTOLAUNCH = "path/to/project/folder"
   PROPERTIES
-    BUILD_MODE        = "debug"
     AUTOLAUNCH        = ""  # Godot project path to auto-launch after a default 'rogo' build.
+    GODOT_EXE_MACOS   = ""
     GODOT_EXE_WINDOWS = ""
     GODOT_EXE_LINUX   = ""
 
@@ -386,20 +387,25 @@ routine rogo_run
   # Runs the AUTOLAUNCH project, if defined.
   if (String.exists(Build.AUTOLAUNCH))
     if (System.is_macos)
-      block cmd = "open $/project.godot"(File(Build.AUTOLAUNCH).esc)
+      local exe = Build.GODOT_EXE_MACOS
+      if (String.exists(exe) and not exe.ends_with(".app"))
+        local cmd = "$ $/project.godot"(File(Build.GODOT_EXE_MACOS).esc,File(Build.AUTOLAUNCH).esc)
         execute cmd
-      endBlock
+      else
+        local cmd = "open"
+        if (String.exists(exe)) cmd .= appending( "-a $"(File(exe).esc) )
+        cmd .= appending( "$/project.godot"(File(Build.AUTOLAUNCH).esc) )
+        execute cmd
+      endIf
     elseIf (System.is_windows)
       if (String.exists(Build.GODOT_EXE_WINDOWS))
-        block cmd = "$ $/project.godot"(File(Build.GODOT_EXE_WINDOWS).esc,File(Build.AUTOLAUNCH).esc)
-          execute cmd
-        endBlock
+        local cmd = "$ $/project.godot"(File(Build.GODOT_EXE_WINDOWS).esc,File(Build.AUTOLAUNCH).esc)
+        execute cmd
       endIf
     else
       if (String.exists(Build.GODOT_EXE_LINUX))
-        block cmd = "$ $/project.godot"(File(Build.GODOT_EXE_LINUX).esc,File(Build.AUTOLAUNCH).esc)
-          execute cmd
-        endBlock
+        local cmd = "$ $/project.godot"(File(Build.GODOT_EXE_LINUX).esc,File(Build.AUTOLAUNCH).esc)
+        execute cmd
       endIf
     endIf
   endIf
