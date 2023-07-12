@@ -448,20 +448,20 @@ class BuildConfig
     modes = String[]
 
   METHODS
-    method init( feature_string:String )
-      if (not String.exists(feature_string)) feature_string = "default"
+    method init( target_string:String )
+      if (not String.exists(target_string)) target_string = "default"
 
-      local features = feature_string.split('.')
+      local targets = target_string.split('.')
 
-      local mode = features.remove_first( BuildConfig.MODES.contains($) )
-      local platform = features.remove_first( BuildConfig.PLATFORMS.contains($) )
-      local architecture = features.remove_first( BuildConfig.ARCHITECTURES.contains($) )
+      local mode = targets.remove_first( BuildConfig.MODES.contains($) )
+      local platform = targets.remove_first( BuildConfig.PLATFORMS.contains($) )
+      local architecture = targets.remove_first( BuildConfig.ARCHITECTURES.contains($) )
 
       if (platform == "javascript" or platform == "web") platform = "web"
-      if (not mode) mode = features.remove_first( $ == "all" )
+      if (not mode) mode = targets.remove_first( $ == "all" )
 
-      if (not features.is_empty)
-        throw Error( "Invalid feature '$'."(features.first) )
+      if (not targets.is_empty)
+        throw Error( "[ERROR] Invalid target '$'."(targets.first) )
       endIf
 
       localize supported_platforms
