@@ -3,8 +3,8 @@ A Rogo buildscript to facilitate creating and building GDExtensions for Godot 4.
 
 About     | &nbsp;
 ----------|-----------------------
-Version   | 1.0
-Date      | June 26, 2023
+Version   | 4.1
+Date      | July 29, 2023
 Platforms | Windows, macOS, Linux
 
 # Installation
